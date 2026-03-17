@@ -48,4 +48,7 @@ RUN useradd -m -s /bin/bash rstudio \
  && echo "rstudio ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 EXPOSE 8787
+
+ENTRYPOINT []
+
 CMD ["/usr/lib/rstudio-server/bin/rserver", "--server-daemonize=0", "--www-port=8787"]
