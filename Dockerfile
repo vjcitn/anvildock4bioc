@@ -2,18 +2,24 @@
 
 FROM us.gcr.io/broad-dsp-gcr-public/terra-base:1.0.0
 
+# terra-base runs as a non-root user; apt needs root and /var/lib/apt/lists/partial must exist.
+USER root
+
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Pin to a ref (tag, branch, or commit). "main" is fine but less reproducible.
 ARG RSTUDIO_REF=main
 
-# Let the upstream dependency script run (it calls sudo); also needed for `lsb_release -sc`.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Ensure apt list directories exist and are writable, then install minimal prerequisites
+RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial \
+ && chmod -R 0755 /var/lib/apt/lists /var/cache/apt/archives \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
     sudo \
     lsb-release \
     ca-certificates \
     git \
-  && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
 # Build RStudio Server from source (Ubuntu 22.04 / jammy dependency set)
