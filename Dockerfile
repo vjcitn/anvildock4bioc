@@ -1,70 +1,37 @@
 # syntax=docker/dockerfile:1.6
-
 FROM us.gcr.io/broad-dsp-gcr-public/terra-base:1.0.0
 
-# terra-base runs as a non-root user; apt needs root and /var/lib/apt/lists/partial must exist.
 USER root
-
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Pin to a ref (tag, branch, or commit). "main" is fine but less reproducible.
-ARG RSTUDIO_REF=main
+# Pin an OSS RStudio Server version; override at build time if desired
+# Example:
+#   docker build --build-arg RSTUDIO_VERSION=2024.12.0-467 .
+ARG RSTUDIO_VERSION=2024.12.0-467
 
-# Ensure apt list directories exist and are writable, then install minimal prerequisites.
-# Also normalize pkg-config tooling: some bases pull in pkgconf which can conflict with pkg-config.
+# Jammy (22.04) AMD64 builds are typically published here.
+ARG RSTUDIO_DEB_URL="https://download2.rstudio.org/server/jammy/amd64/rstudio-server-${RSTUDIO_VERSION}-amd64.deb"
+
 RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial \
- && chmod -R 0755 /var/lib/apt/lists /var/cache/apt/archives \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-    sudo \
-    lsb-release \
     ca-certificates \
-    git \
- && (apt-get purge -y pkgconf || true) \
- && apt-get install -y --no-install-recommends pkg-config \
- && apt-get -f install -y \
+    wget \
+    gdebi-core \
+    psmisc \
+    procps \
+    sudo \
  && rm -rf /var/lib/apt/lists/*
 
-# ------------------------------------------------------------------------------
-# Build RStudio Server from source (Ubuntu 22.04 / jammy dependency set)
-# ------------------------------------------------------------------------------
+RUN wget -qO /tmp/rstudio-server.deb "${RSTUDIO_DEB_URL}" \
+ && gdebi -n /tmp/rstudio-server.deb \
+ && rm -f /tmp/rstudio-server.deb
 
-WORKDIR /opt/src
+# Create a user you can log in as via RStudio
+RUN useradd -m -s /bin/bash rstudio \
+ && echo "rstudio:rstudio" | chpasswd \
+ && adduser rstudio sudo \
+ && echo "rstudio ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Clone upstream source
-RUN git clone https://github.com/rstudio/rstudio.git
-WORKDIR /opt/src/rstudio
-RUN git checkout "${RSTUDIO_REF}"
-
-# Install build dependencies (Ubuntu 22.04 "jammy")
-# This script installs a large set of apt deps and then runs dependencies/common/install-common jammy.
-RUN chmod +x dependencies/linux/install-dependencies-jammy \
- && cd dependencies/linux \
- && ./install-dependencies-jammy
-
-# Configure + build + install (per INSTALL doc)
-# Default CMAKE_INSTALL_PREFIX for Server on Linux is /usr/local/lib/rstudio-server.
-RUN mkdir -p build \
- && cd build \
- && cmake .. -DRSTUDIO_TARGET=Server -DCMAKE_BUILD_TYPE=Release \
- && make -j"$(nproc)" \
- && make install
-
-# ------------------------------------------------------------------------------
-# Runtime configuration for container usage
-# ------------------------------------------------------------------------------
-
-# Create service user as described in INSTALL (optional but recommended)
-RUN useradd -r -m rstudio-server || true
-
-# Required runtime directories (INSTALL)
-RUN mkdir -p /var/log/rstudio/rstudio-server \
- && mkdir -p /var/lib/rstudio-server \
- && chown -R rstudio-server:rstudio-server /var/log/rstudio /var/lib/rstudio-server
-
-# Expose default port
 EXPOSE 8787
-
-# Run in foreground (container-friendly).
-# rserver is installed under /usr/local/lib/rstudio-server/bin by default.
-CMD ["/usr/local/lib/rstudio-server/bin/rserver", "--server-daemonize=0", "--www-port=8787"]
+CMD ["/usr/lib/rstudio-server/bin/rserver", "--server-daemonize=0", "--www-port=8787"]
