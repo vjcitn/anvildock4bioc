@@ -10,7 +10,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Pin to a ref (tag, branch, or commit). "main" is fine but less reproducible.
 ARG RSTUDIO_REF=main
 
-# Ensure apt list directories exist and are writable, then install minimal prerequisites
+# Ensure apt list directories exist and are writable, then install minimal prerequisites.
+# Also normalize pkg-config tooling: some bases pull in pkgconf which can conflict with pkg-config.
 RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial \
  && chmod -R 0755 /var/lib/apt/lists /var/cache/apt/archives \
  && apt-get update \
@@ -19,6 +20,9 @@ RUN mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial \
     lsb-release \
     ca-certificates \
     git \
+ && (apt-get purge -y pkgconf || true) \
+ && apt-get install -y --no-install-recommends pkg-config \
+ && apt-get -f install -y \
  && rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------------------------------
